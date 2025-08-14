@@ -71,6 +71,26 @@ class SearchResult(BaseModel):
     changed_files: int = 0
     file_details: list = []
 
+def convert_numpy_types_safe(value):
+    """Convert numpy types to Python native types without importing numpy"""
+    try:
+        # Check if it's a numpy type by checking the type name
+        type_name = type(value).__name__
+        
+        if type_name.startswith('int'):
+            return int(value)
+        elif type_name.startswith('float'):
+            return float(value)
+        elif type_name.startswith('bool'):
+            return bool(value)
+        elif hasattr(value, 'tolist'):  # numpy array
+            return value.tolist()
+        else:
+            return value
+    except Exception:
+        # If conversion fails, return the original value
+        return value
+
 def initialize_connections():
     """Initialize Milvus and OpenAI connections"""
     global milvus_collection, openai_client, embedding_dim
@@ -843,29 +863,49 @@ async def search_prs_get(
                     
                     seen_pr_ids.add(pr_id)
                     
+                    # Convert any numpy types safely
+                    pr_id = convert_numpy_types_safe(pr_id)
+                    pr_number = convert_numpy_types_safe(hit_data.get('pr_number', 0))
+                    title = convert_numpy_types_safe(hit_data.get('title', '')) or ''
+                    body = convert_numpy_types_safe(hit_data.get('body', '')) or ''
+                    author_name = convert_numpy_types_safe(hit_data.get('author_name', '')) or ''
+                    created_at = convert_numpy_types_safe(hit_data.get('created_at', 0)) or 0
+                    merged_at = convert_numpy_types_safe(hit_data.get('merged_at', 0)) or 0
+                    status = convert_numpy_types_safe(hit_data.get('status', '')) or ''
+                    is_merged = convert_numpy_types_safe(hit_data.get('is_merged', False)) or False
+                    is_closed = convert_numpy_types_safe(hit_data.get('is_closed', False)) or False
+                    feature = convert_numpy_types_safe(hit_data.get('feature', '')) or ''
+                    pr_summary = convert_numpy_types_safe(hit_data.get('pr_summary', '')) or ''
+                    risk_score = convert_numpy_types_safe(hit_data.get('risk_score', 0.0)) or 0.0
+                    risk_band = convert_numpy_types_safe(hit_data.get('risk_band', 'low')) or 'low'
+                    risk_reasons = convert_numpy_types_safe(hit_data.get('risk_reasons', [])) or []
+                    additions = convert_numpy_types_safe(hit_data.get('additions', 0)) or 0
+                    deletions = convert_numpy_types_safe(hit_data.get('deletions', 0)) or 0
+                    changed_files = convert_numpy_types_safe(hit_data.get('changed_files', 0)) or 0
+                    
                     search_results.append(SearchResult(
                         pr_id=pr_id,
-                        pr_number=hit_data.get('pr_number', 0),
-                        title=hit_data.get('title', '') or '',
-                        content=hit_data.get('body', '') or '',
+                        pr_number=pr_number,
+                        title=title,
+                        content=body,
                         text_type="pr_data",
                         file_path="",
                         function_name="",
                         similarity_score=hit.score,
-                        author=hit_data.get('author_name', '') or '',
-                        created_at=hit_data.get('created_at', 0) or 0,
-                        merged_at=hit_data.get('merged_at', 0) or 0,
-                        status=hit_data.get('status', '') or '',
-                        is_merged=hit_data.get('is_merged', False) or False,
-                        is_closed=hit_data.get('is_closed', False) or False,
-                        feature=hit_data.get('feature', '') or '',
-                        pr_summary=hit_data.get('pr_summary', '') or '',
-                        risk_score=float(hit_data.get('risk_score', 0.0) or 0.0),
-                        risk_band=hit_data.get('risk_band', 'low') or 'low',
-                        risk_reasons=hit_data.get('risk_reasons', []) or [],
-                        additions=hit_data.get('additions', 0) or 0,
-                        deletions=hit_data.get('deletions', 0) or 0,
-                        changed_files=hit_data.get('changed_files', 0) or 0,
+                        author=author_name,
+                        created_at=created_at,
+                        merged_at=merged_at,
+                        status=status,
+                        is_merged=is_merged,
+                        is_closed=is_closed,
+                        feature=feature,
+                        pr_summary=pr_summary,
+                        risk_score=risk_score,
+                        risk_band=risk_band,
+                        risk_reasons=risk_reasons,
+                        additions=additions,
+                        deletions=deletions,
+                        changed_files=changed_files,
                         file_details=[]
                     ))
             

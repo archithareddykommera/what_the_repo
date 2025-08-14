@@ -122,6 +122,12 @@ what_the_repo/
 - Returns empty arrays instead of throwing errors
 - Health check endpoint for monitoring
 
+### 4. **Optimized Dependencies**
+- **No numpy/pandas**: Removed unnecessary data processing libraries
+- **Lightweight**: Only essential dependencies for core functionality
+- **Fast startup**: Minimal package installation time
+- **Memory efficient**: Smaller bundle size for serverless deployment
+
 ## 🧪 Testing Your Deployment
 
 ### 1. Health Check
