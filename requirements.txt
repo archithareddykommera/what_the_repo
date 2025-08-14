@@ -1,0 +1,84 @@
+# What the repo - Comprehensive Requirements
+# Consolidated from all requirement files
+
+# =============================================================================
+# CORE FRAMEWORKS
+# =============================================================================
+
+# FastAPI and web server
+fastapi>=0.104.0
+uvicorn>=0.24.0
+python-multipart>=0.0.6
+pydantic>=2.0.0
+
+# =============================================================================
+# DATABASE CONNECTIONS
+# =============================================================================
+
+# PostgreSQL - Windows compatible alternatives
+psycopg2-binary>=2.9.9
+# Alternative if psycopg2-binary fails on Windows:
+# psycopg2>=2.9.9
+# Or use asyncpg for async PostgreSQL:
+asyncpg>=0.29.0
+
+# Supabase client
+supabase==2.3.4
+
+# =============================================================================
+# VECTOR DATABASE
+# =============================================================================
+
+# Milvus vector database
+pymilvus==2.3.6
+
+# =============================================================================
+# AI AND EMBEDDINGS
+# =============================================================================
+
+# OpenAI API
+openai>=1.0.0
+
+# =============================================================================
+# DATA PROCESSING
+# =============================================================================
+
+# Numerical computing
+numpy>=1.24.3
+pandas==2.1.4
+
+# =============================================================================
+# UTILITIES
+# =============================================================================
+
+# HTTP requests
+requests>=2.31.0
+
+# Environment variables
+python-dotenv==1.0.0
+
+# Logging and monitoring
+structlog==23.2.0
+
+# =============================================================================
+# WINDOWS COMPATIBILITY
+# =============================================================================
+
+# Package management
+setuptools>=65.0.0
+wheel>=0.38.0
+
+# =============================================================================
+# DEVELOPMENT AND TESTING (Optional)
+# =============================================================================
+
+# Testing framework (uncomment if needed)
+# pytest>=7.0.0
+# pytest-asyncio>=0.21.0
+
+# Code formatting (uncomment if needed)
+# black>=23.0.0
+# flake8>=6.0.0
+
+# Type checking (uncomment if needed)
+# mypy>=1.0.0 
