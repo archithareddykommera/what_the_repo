@@ -1,0 +1,22 @@
+# Milvus Data Load - Requirements
+# Dependencies for loading processed PR data into Milvus vector database
+
+# =============================================================================
+# CORE DEPENDENCIES
+# =============================================================================
+
+# Milvus vector database client
+pymilvus==2.3.6
+
+# OpenAI API for embeddings
+openai>=1.0.0
+
+# NumPy for array operations
+numpy>=1.24.0
+
+# =============================================================================
+# UTILITIES
+# =============================================================================
+
+# Environment variables
+python-dotenv==1.0.0

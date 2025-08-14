@@ -1,0 +1,19 @@
+# Git Data Download - Requirements
+# Dependencies for GitHub PR data collection and processing
+
+# =============================================================================
+# CORE DEPENDENCIES
+# =============================================================================
+
+# HTTP requests for GitHub API
+requests>=2.31.0
+
+# OpenAI API for analysis
+openai>=1.0.0
+
+# =============================================================================
+# UTILITIES
+# =============================================================================
+
+# Environment variables
+python-dotenv==1.0.0

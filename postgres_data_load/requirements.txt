@@ -1,0 +1,22 @@
+# Postgres Data Load - Requirements
+# Dependencies for processing data for analytics dashboards
+
+# =============================================================================
+# CORE DEPENDENCIES
+# =============================================================================
+
+# PostgreSQL client
+psycopg2-binary>=2.9.9
+
+# Supabase client
+supabase==2.3.4
+
+# Milvus for vector operations
+pymilvus==2.3.6
+
+# =============================================================================
+# UTILITIES
+# =============================================================================
+
+# Environment variables
+python-dotenv==1.0.0

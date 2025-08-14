@@ -1,0 +1,16 @@
+# Static Files - Requirements
+# Minimal dependencies for static file serving and web assets
+
+# =============================================================================
+# CORE DEPENDENCIES
+# =============================================================================
+
+# FastAPI for serving static files
+fastapi>=0.104.0
+
+# =============================================================================
+# UTILITIES
+# =============================================================================
+
+# Environment variables
+python-dotenv==1.0.0
