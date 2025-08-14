@@ -17,6 +17,22 @@ from pymilvus import connections, Collection, utility
 import openai
 from openai import OpenAI
 from supabase import create_client, Client
+
+def create_supabase_client():
+    """Create Supabase client with proxy environment variables cleared"""
+    supabase_url = os.getenv('SUPABASE_URL')
+    supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+    
+    if not supabase_url or not supabase_key:
+        raise ValueError("Supabase configuration not found")
+    
+    # Clear any proxy environment variables that might interfere
+    proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy']
+    for var in proxy_vars:
+        if var in os.environ:
+            del os.environ[var]
+    
+    return create_client(supabase_url, supabase_key)
 import logging
 
 app = FastAPI(title="What the repo-gpt", description="GitHub PR analysis and insights")
@@ -101,10 +117,7 @@ class EngineerLensUI:
     def _init_supabase(self):
         """Initialize Supabase connection"""
         try:
-            supabase_url = os.getenv('SUPABASE_URL')
-            supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-            
-            self.supabase_client = create_client(supabase_url, supabase_key)
+            self.supabase_client = create_supabase_client()
             print("✅ Connected to Supabase for Engineer Lens UI")
             
         except Exception as e:
@@ -3885,13 +3898,10 @@ async def get_what_shipped_data(
     """Get What Shipped data from repo_prs table"""
     try:
         # Initialize Supabase client
-        supabase_url = os.getenv('SUPABASE_URL')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-        
-        if not supabase_url or not supabase_key:
+        try:
+            supabase_client = create_supabase_client()
+        except ValueError as e:
             raise HTTPException(status_code=500, detail="Supabase configuration not found")
-        
-        supabase_client = create_client(supabase_url, supabase_key)
         
         # Build query
         query = supabase_client.table('repo_prs').select('*').eq('repo_name', repo)
@@ -3950,13 +3960,10 @@ async def get_what_shipped_summary(
     """Get summary statistics for What Shipped page"""
     try:
         # Initialize Supabase client
-        supabase_url = os.getenv('SUPABASE_URL')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-        
-        if not supabase_url or not supabase_key:
+        try:
+            supabase_client = create_supabase_client()
+        except ValueError as e:
             raise HTTPException(status_code=500, detail="Supabase configuration not found")
-        
-        supabase_client = create_client(supabase_url, supabase_key)
         
         # Build base query
         query = supabase_client.table('repo_prs').select('*').eq('repo_name', repo)
@@ -4032,13 +4039,10 @@ async def get_what_shipped_authors(
     """Get list of authors for What Shipped page"""
     try:
         # Initialize Supabase client
-        supabase_url = os.getenv('SUPABASE_URL')
-        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-        
-        if not supabase_url or not supabase_key:
+        try:
+            supabase_client = create_supabase_client()
+        except ValueError as e:
             raise HTTPException(status_code=500, detail="Supabase configuration not found")
-        
-        supabase_client = create_client(supabase_url, supabase_key)
         
         # Try to get authors from the authors table first
         try:

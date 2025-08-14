@@ -93,6 +93,12 @@ class EngineerLensDataProcessor:
             supabase_url = os.getenv('SUPABASE_URL')
             supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
             
+            # Clear any proxy environment variables that might interfere
+            proxy_vars = ['HTTP_PROXY', 'HTTPS_PROXY', 'http_proxy', 'https_proxy', 'NO_PROXY', 'no_proxy']
+            for var in proxy_vars:
+                if var in os.environ:
+                    del os.environ[var]
+            
             self.supabase_client = create_client(supabase_url, supabase_key)
             
             # Also create direct PostgreSQL connection for bulk operations
