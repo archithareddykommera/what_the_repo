@@ -18,7 +18,7 @@ pydantic==2.5.0
 # PostgreSQL - Railway compatible
 #psycopg2-binary==2.9.9
 
-supabase=2.5.1
+supabase==2.5.1
 gotrue==2.5.0
 postgrest==0.16.9
 storage3==0.7.7
