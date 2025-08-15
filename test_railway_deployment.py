@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test script for Railway deployment of What the repo application.
+Test script for Railway deployment of WhatTheRepo application.
 Run this to verify the application works before and after deployment.
 """
 
@@ -74,7 +74,7 @@ def test_environment_variables():
 
 def main():
     """Main test function"""
-    print("🚂 Railway Deployment Test - What the repo")
+    print("🚂 Railway Deployment Test - WhatTheRepo")
     print("=" * 60)
     
     # Test configuration

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Vercel-compatible FastAPI application for What the repo.
+Vercel-compatible FastAPI application for WhatTheRepo.
 Adapted for serverless deployment on Vercel.
 """
 
@@ -20,7 +20,7 @@ from supabase import create_client, Client
 import logging
 
 # Initialize FastAPI app
-app = FastAPI(title="What the repo", description="GitHub PR analysis and insights")
+app = FastAPI(title="WhatTheRepo", description="GitHub PR analysis and insights")
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -169,7 +169,7 @@ async def home_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>What the repo</title>
+        <title>WhatTheRepo</title>
         <style>
             * {
                 margin: 0;
@@ -501,7 +501,7 @@ async def home_page():
     </head>
     <body>
         <div class="header">
-            <h1>🔍 What the repo</h1>
+            <h1>🔍 WhatTheRepo</h1>
             <p>Discover insights from your GitHub repositories with AI-powered analysis</p>
         </div>
         
@@ -547,7 +547,7 @@ async def home_page():
         </div>
         
         <div class="footer">
-            <p>&copy; 2025 What the repo. Powered by AI and vector search.</p>
+            <p>&copy; 2025 WhatTheRepo. Powered by AI and vector search.</p>
         </div>
 
         <script>

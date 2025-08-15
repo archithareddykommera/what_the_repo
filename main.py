@@ -18,6 +18,25 @@ import openai
 from openai import OpenAI
 from supabase import create_client, Client
 
+# Import new routing modules
+from time_parse import parse_time
+from router import route_query
+from direct_handlers import (
+    direct_prs_list, direct_features_list, direct_top_file_by_lines,
+    direct_pr_count, direct_top_prs_by_risk, direct_file_changes_summary
+)
+from hybrid_handlers import (
+    hybrid_features, hybrid_risky_files, hybrid_auth_features,
+    hybrid_payment_features, hybrid_security_changes, hybrid_database_changes,
+    hybrid_api_changes, hybrid_test_changes, hybrid_performance_changes,
+    hybrid_bug_fixes, hybrid_complex_changes, hybrid_streaming_features
+)
+from vector_handlers import (
+    vector_explanation, vector_risk_analysis, vector_why_risky,
+    vector_streaming_features, vector_complex_changes, vector_impact_analysis,
+    vector_search_with_explanation
+)
+
 def create_supabase_client():
     """Create Supabase client with proxy environment variables cleared"""
     supabase_url = os.getenv('SUPABASE_URL')
@@ -35,7 +54,7 @@ def create_supabase_client():
     return create_client(supabase_url, supabase_key)
 import logging
 
-app = FastAPI(title="What the repo-gpt", description="GitHub PR analysis and insights")
+app = FastAPI(title="WhatTheRepo", description="GitHub PR analysis and insights")
 
 # Enable CORS for frontend
 app.add_middleware(
@@ -204,7 +223,7 @@ class EngineerLensUI:
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Engineer Lens - What the repo</title>
+            <title>Engineer Lens - WhatTheRepo</title>
             <style>
                 * {{
                     margin: 0;
@@ -687,7 +706,7 @@ class EngineerLensUI:
         <body>
             <div class="header">
                 <div class="nav-container">
-                    <a href="/" class="logo">🔍 What the repo</a>
+                    <a href="/" class="logo">🔍 WhatTheRepo</a>
                     <a href="/" class="back-button">← Back to Home</a>
                 </div>
             </div>
@@ -1015,7 +1034,7 @@ async def home_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>What the repo</title>
+        <title>WhatTheRepo</title>
         <style>
             * {
                 margin: 0;
@@ -1255,6 +1274,19 @@ async def home_page():
             .result-item:hover {
                 border-color: rgba(255, 255, 255, 0.2);
                 transform: translateY(-2px);
+            }
+            
+            .example-query-item {
+                cursor: pointer;
+                transition: all 0.3s ease;
+                border: 2px solid transparent;
+            }
+            
+            .example-query-item:hover {
+                border-color: #00d4ff;
+                background: rgba(0, 212, 255, 0.1);
+                transform: translateY(-3px);
+                box-shadow: 0 10px 20px rgba(0, 212, 255, 0.2);
             }
             
             .result-header {
@@ -1531,7 +1563,7 @@ async def home_page():
     </head>
     <body>
             <div class="header">
-            <h1>🔍 What the repo</h1>
+            <h1>🔍 WhatTheRepo</h1>
             <p>Discover insights from your GitHub repositories with AI-powered analysis</p>
             </div>
             
@@ -1578,7 +1610,7 @@ async def home_page():
                 </div>
                 
         <div class="footer">
-            <p>&copy; 2025 What the repo. Powered by AI and vector search.</p>
+            <p>&copy; 2025 WhatTheRepo. Powered by AI and vector search.</p>
         </div>
 
         <script>
@@ -1669,9 +1701,35 @@ async def home_page():
                     const data = await response.json();
                     if (data.queries && data.queries.length > 0) {
                         searchResults.innerHTML = ''; // Clear loading message
-                        data.queries.forEach(query => {
+                        // Show only the three specific example queries
+                        const specificQueries = [
+                            {
+                                query: `What was shipped in ${selectedRepo} last week?`,
+                                type: "Time-based",
+                                description: `Find PRs shipped in ${selectedRepo} last 7 days with features and improvements.`,
+                                tags: ["time", "last_week", "shipped", "features"]
+                            },
+                            {
+                                query: `What are the top 5 riskiest PRs in ${selectedRepo}?`,
+                                type: "Risk-based",
+                                description: `Identify the 5 PRs with the highest risk scores in ${selectedRepo}.`,
+                                tags: ["risk", "top_5", "riskiest", "high_risk"]
+                            },
+                            {
+                                query: `Show me all merged PRs from last month in ${selectedRepo}`,
+                                type: "Status-based",
+                                description: `List all merged PRs from the last 30 days in ${selectedRepo}.`,
+                                tags: ["status", "merged", "last_month", "all"]
+                            }
+                        ];
+                        
+                        specificQueries.forEach(query => {
                             const resultItem = document.createElement('div');
-                            resultItem.classList.add('result-item');
+                            resultItem.classList.add('result-item', 'example-query-item');
+                            resultItem.onclick = () => {
+                                document.getElementById('search-input').value = query.query;
+                                performSearch();
+                            };
                             resultItem.innerHTML = `
                                 <div class="result-header">
                                     <h3 class="result-title">${query.query}</h3>
@@ -1680,6 +1738,9 @@ async def home_page():
                                 <p class="result-content">${query.description}</p>
                                 <div class="result-tags">
                                     ${query.tags.map(tag => `<span class="result-tag">${tag}</span>`).join('')}
+                                </div>
+                                <div style="text-align: center; margin-top: 1rem;">
+                                    <span style="color: #00d4ff; font-size: 0.9rem; font-weight: 600;">Click to execute this query</span>
                                 </div>
                             `;
                             searchResults.appendChild(resultItem);
@@ -2010,7 +2071,7 @@ async def what_shipped_page(repo: str = Query(None, description="Selected reposi
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>What Shipped - What the repo</title>
+        <title>What Shipped - WhatTheRepo</title>
         <style>
             * {{
                 margin: 0;
@@ -2413,7 +2474,7 @@ async def what_shipped_page(repo: str = Query(None, description="Selected reposi
     <body>
         <div class="header">
             <div class="nav-container">
-                <a href="/" class="logo">What the repo-gpt</a>
+                <a href="/" class="logo">WhatTheRepo</a>
                 <a href="/" class="back-button">← Back to Home</a>
             </div>
         </div>
@@ -2710,314 +2771,376 @@ async def search_prs_get(
     search_request = SearchRequest(query=query, repo_name=repo_name, limit=limit)
     return await search_prs(search_request)
 
+
+
 @app.post("/search")
 async def search_prs(request: SearchRequest):
-    """Search PRs using vector similarity with natural language processing"""
+    """Intelligent search with query routing - supports direct, hybrid, and vector search"""
     if not milvus_collection:
         raise HTTPException(status_code=500, detail="Milvus collection not initialized")
     
     try:
-        print(f"🔍 Search request: query='{request.query}', repo='{request.repo_name}', limit={request.limit}")
+        print(f"🔍 Intelligent search request: query='{request.query}', repo='{request.repo_name}', limit={request.limit}")
         
-        # Parse the natural language query to extract filters
-        query_filters = parse_natural_language_query(request.query)
-        print(f"📋 Parsed filters: {query_filters}")
+        # Route the query to determine search strategy first
+        plan = route_query(request.query)
         
-        # Debug: Show what each filter does
-        if query_filters.get('feature_filter'):
-            print(f"🔍 Feature filter: {query_filters['feature_filter']}")
-        if query_filters.get('time_filter'):
-            print(f"🔍 Time filter: {query_filters['time_filter']}")
-        if query_filters.get('status_filter'):
-            print(f"🔍 Status filter: {query_filters['status_filter']}")
+        # Parse time window from query
+        start, end = parse_time(request.query)
+        print(f"⏰ Time window: {start} to {end}")
         
-        # Build search expression with filters
-        expr_parts = []
+        plan["time"] = {"start": start, "end": end}
+        plan["filters"] = {"repo": request.repo_name}
         
-        # Repository filter
-        if request.repo_name:
-            expr_parts.append(f'repo_name == "{request.repo_name}"')
+        print(f"🎯 Routing plan: {plan}")
         
-        # Time-based filters
-        if query_filters.get('time_filter'):
-            time_expr = query_filters['time_filter']
-            expr_parts.append(time_expr)
+        # Initialize search_results
+        search_results = []
         
-        # Status filters
-        if query_filters.get('status_filter'):
-            status_expr = query_filters['status_filter']
-            expr_parts.append(status_expr)
-        
-        # Author filters
-        if query_filters.get('author_filter'):
-            author_expr = query_filters['author_filter']
-            expr_parts.append(author_expr)
-        
-        # Risk-based filters
-        if query_filters.get('risk_filter'):
-            risk_expr = query_filters['risk_filter']
-            expr_parts.append(risk_expr)
-        
-        # Feature filters
-        if query_filters.get('feature_filter'):
-            feature_expr = query_filters['feature_filter']
-            expr_parts.append(feature_expr)
-        
-        # Combine all expressions
-        expr = " and ".join(expr_parts) if expr_parts else None
-        print(f"🔍 Search expression: {expr}")
-        
-        # Determine search method
-        use_direct_query = query_filters.get('use_direct_query', False)
-        
-        if use_direct_query:
-            print(f"🔍 Using DIRECT QUERY method for filtered search")
-            # Use direct query for specific filtered requests
-            try:
-                results = milvus_collection.query(
-                    expr=expr,
-                    output_fields=["pr_id", "pr_number", "title", "body", "author_name", "created_at", "merged_at", "status", "repo_name", "is_merged", "is_closed", "feature", "pr_summary", "risk_score", "risk_band", "risk_reasons", "additions", "deletions", "changed_files"],
-                    limit=request.limit
-                )
-                print(f"✅ Direct query completed, found {len(results)} results")
-                
-                # Convert to search result format with deduplication
+        # Execute based on route
+        if plan["route"] == "direct":
+            print(f"🔍 Using DIRECT route for: {plan['object']} with metric: {plan['metric']}")
+            search_results = []
+            
+            if plan["object"] == "features":
+                data = direct_features_list(request.repo_name, start, end, None, request.limit)
                 search_results = []
-                seen_pr_ids = set()
-                seen_pr_numbers = set()
-                duplicates_skipped = 0
-                
-                for result in results:
-                    pr_id = result.get('pr_id', 0)
-                    pr_number = result.get('pr_number', 0)
-                    
-                    # Deduplication check
-                    is_duplicate = False
-                    if pr_id in seen_pr_ids:
-                        print(f"🔍 Direct query: Skipping duplicate PR #{pr_number} (ID: {pr_id}) - already seen")
-                        is_duplicate = True
-                        duplicates_skipped += 1
-                    elif pr_number in seen_pr_numbers:
-                        print(f"🔍 Direct query: Skipping duplicate PR #{pr_number} (ID: {pr_id}) - PR number already seen")
-                        is_duplicate = True
-                        duplicates_skipped += 1
-                    
-                    if is_duplicate:
-                        continue
-                    
-                    seen_pr_ids.add(pr_id)
-                    seen_pr_numbers.add(pr_number)
-                    
+                for item in data:
                     search_results.append(SearchResult(
-                        pr_id=pr_id,
-                        pr_number=pr_number,
-                        title=result.get('title', '') or '',
-                        content=result.get('body', '') or '',
-                        text_type="pr_data",
+                        pr_id=item.get('pr_id', 0),
+                        pr_number=item.get('pr_number', 0),
+                        title=item.get('title', '') or '',
+                        content=item.get('pr_summary', '') or '',
+                        text_type="feature",
                         file_path="",
                         function_name="",
-                        similarity_score=1.0,  # Direct query results have max similarity
-                        author=result.get('author_name', '') or '',
-                        created_at=result.get('created_at', 0) or 0,
-                        merged_at=result.get('merged_at', 0) or 0,
-                        status=result.get('status', '') or '',
-                        is_merged=result.get('is_merged', False) or False,
-                        is_closed=result.get('is_closed', False) or False,
-                        feature=result.get('feature', '') or '',
-                        pr_summary=result.get('pr_summary', '') or '',
-                        risk_score=float(result.get('risk_score', 0.0) or 0.0),
-                        risk_band=result.get('risk_band', 'low') or 'low',
-                        risk_reasons=result.get('risk_reasons', []) or [],
-                        additions=result.get('additions', 0) or 0,
-                        deletions=result.get('deletions', 0) or 0,
-                        changed_files=result.get('changed_files', 0) or 0,
+                        similarity_score=1.0,
+                        author=item.get('author_name', '') or '',
+                        created_at=item.get('created_at', 0) or 0,
+                        merged_at=item.get('merged_at', 0) or 0,
+                        status="merged",
+                        is_merged=True,
+                        is_closed=False,
+                        feature=item.get('feature', '') or '',
+                        pr_summary=item.get('pr_summary', '') or '',
+                        risk_score=float(item.get('risk_score', 0.0) or 0.0),
+                        risk_band="low",
+                        risk_reasons=[],
+                        additions=item.get('additions', 0) or 0,
+                        deletions=item.get('deletions', 0) or 0,
+                        changed_files=item.get('changed_files', 0) or 0,
                         file_details=[]
                     ))
                 
-                print(f"✅ Direct query processed {len(search_results)} results (skipped {duplicates_skipped} duplicates)")
-                return search_results
+            elif plan["object"] == "files" and plan["metric"] == "top":
+                data = direct_top_file_by_lines(request.repo_name, start, end)
+                if data:
+                    search_results = [SearchResult(
+                        pr_id=0,
+                        pr_number=0,
+                        title=f"Top changed file: {data['file_path']}",
+                        content=f"Total lines changed: {data['total_lines_changed']}, PRs involved: {data['pr_count']}",
+                        text_type="file_analysis",
+                        file_path=data['file_path'],
+                        function_name="",
+                        similarity_score=1.0,
+                        author="",
+                        created_at=0,
+                        merged_at=0,
+                        status="",
+                        is_merged=False,
+                        is_closed=False,
+                        feature="",
+                        pr_summary="",
+                        risk_score=0.0,
+                        risk_band="low",
+                        risk_reasons=[],
+                        additions=data['total_lines_changed'],
+                        deletions=0,
+                        changed_files=1,
+                        file_details=[]
+                    )]
+                else:
+                    search_results = []
+                    
+            elif plan["metric"] == "largest":
+                # Get largest PRs sorted by total changes (additions + deletions + files changed)
+                author = plan.get("author")
+                pr_number = plan.get("pr_number")
+                limit = plan.get("limit", request.limit)  # Use plan limit if available, otherwise request limit
+                data, summary = direct_prs_list(request.repo_name, start, end, author, pr_number, limit, sort_by_largest=True)
+                search_results = []
+                for item in data:
+                    search_results.append(SearchResult(
+                        pr_id=item.get('pr_id', 0),
+                        pr_number=item.get('pr_number', 0),
+                        title=item.get('title', '') or '',
+                        content=item.get('pr_summary', '') or '',
+                        text_type="largest_pr",
+                        file_path="",
+                        function_name="",
+                        similarity_score=1.0,
+                        author=item.get('author_name', '') or '',
+                        created_at=item.get('created_at', 0) or 0,
+                        merged_at=item.get('merged_at', 0) or 0,
+                        status="merged",
+                        is_merged=True,
+                        is_closed=False,
+                        feature="",
+                        pr_summary=item.get('pr_summary', '') or '',
+                        risk_score=float(item.get('risk_score', 0.0) or 0.0),
+                        risk_band="low",
+                        risk_reasons=[],
+                        additions=item.get('additions', 0) or 0,
+                        deletions=item.get('deletions', 0) or 0,
+                        changed_files=item.get('changed_files', 0) or 0,
+                        file_details=[]
+                    ))
+                    
+            elif plan["metric"] == "riskiest":
+                # Get riskiest PRs sorted by risk score (highest first)
+                author = plan.get("author")
+                pr_number = plan.get("pr_number")
+                limit = plan.get("limit", request.limit)  # Use plan limit if available, otherwise request limit
+                data, summary = direct_prs_list(request.repo_name, start, end, author, pr_number, limit, sort_by_riskiest=True)
+                search_results = []
+                for item in data:
+                    search_results.append(SearchResult(
+                        pr_id=item.get('pr_id', 0),
+                        pr_number=item.get('pr_number', 0),
+                        title=item.get('title', '') or '',
+                        content=item.get('pr_summary', '') or '',
+                        text_type="riskiest_pr",
+                        file_path="",
+                        function_name="",
+                        similarity_score=1.0,
+                        author=item.get('author_name', '') or '',
+                        created_at=item.get('created_at', 0) or 0,
+                        merged_at=item.get('merged_at', 0) or 0,
+                        status="merged",
+                        is_merged=True,
+                        is_closed=False,
+                        feature="",
+                        pr_summary=item.get('pr_summary', '') or '',
+                        risk_score=float(item.get('risk_score', 0.0) or 0.0),
+                        risk_band="high" if item.get('risk_score', 0) > 7 else "medium" if item.get('risk_score', 0) > 4 else "low",
+                        risk_reasons=item.get('risk_reasons', []),
+                        additions=item.get('additions', 0) or 0,
+                        deletions=item.get('deletions', 0) or 0,
+                        changed_files=item.get('changed_files', 0) or 0,
+                        file_details=[]
+                    ))
+                    
+            elif plan["metric"] == "count":
+                data = direct_pr_count(request.repo_name, start, end)
+                search_results = [SearchResult(
+                    pr_id=0,
+                    pr_number=0,
+                    title=f"PR Count Summary",
+                    content=f"Total PRs: {data['total_prs']}, Merged: {data['merged_prs']}, Features: {data['feature_prs']}, High Risk: {data['high_risk_prs']}",
+                    text_type="count_summary",
+                    file_path="",
+                    function_name="",
+                    similarity_score=1.0,
+                    author="",
+                    created_at=0,
+                    merged_at=0,
+                    status="",
+                    is_merged=False,
+                    is_closed=False,
+                    feature="",
+                    pr_summary="",
+                    risk_score=0.0,
+                    risk_band="low",
+                    risk_reasons=[],
+                    additions=0,
+                    deletions=0,
+                    changed_files=0,
+                    file_details=[]
+                )]
                 
-            except Exception as direct_query_error:
-                print(f"❌ Direct query failed: {direct_query_error}")
-                # Fall back to vector search
-                print(f"🔄 Falling back to vector search")
-        
-        # Use vector similarity search for semantic queries
-        print(f"🔍 Using VECTOR SEARCH method for semantic query")
-        
-        # Generate embedding for the query
-        try:
-            query_embedding = get_embedding(request.query)
-            print(f"✅ Generated embedding with {len(query_embedding)} dimensions")
-        except Exception as embed_error:
-            print(f"❌ Embedding generation failed: {embed_error}")
-            raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {embed_error}")
-        
-        # Search parameters
-        search_params = {
-            "metric_type": "COSINE",
-            "params": {"n_top": request.limit}
-        }
-        
-        print(f"🔍 Performing Milvus vector search with params: {search_params}")
-        
-        # Perform vector search
-        try:
-            results = milvus_collection.search(
-            data=[query_embedding],
-            anns_field="vector",
-            param=search_params,
-            limit=request.limit,
-            expr=expr,
-                output_fields=["pr_id", "pr_number", "title", "body", "author_name", "created_at", "merged_at", "status", "repo_name", "is_merged", "is_closed", "feature", "pr_summary", "risk_score", "risk_band", "risk_reasons", "additions", "deletions", "changed_files"]
-            )
-            print(f"✅ Milvus search completed, found {len(results)} result sets")
+            else:
+                # Get author and PR number from plan if available
+                author = plan.get("author")
+                pr_number = plan.get("pr_number")
+                data, summary = direct_prs_list(request.repo_name, start, end, author, pr_number, request.limit)
+                search_results = []
+                for item in data:
+                    search_results.append(SearchResult(
+                        pr_id=item.get('pr_id', 0),
+                        pr_number=item.get('pr_number', 0),
+                        title=item.get('title', '') or '',
+                        content=item.get('pr_summary', '') or '',
+                        text_type="pr_data",
+                        file_path="",
+                        function_name="",
+                        similarity_score=1.0,
+                        author=item.get('author_name', '') or '',
+                        created_at=item.get('created_at', 0) or 0,
+                        merged_at=item.get('merged_at', 0) or 0,
+                        status="merged",
+                        is_merged=True,
+                        is_closed=False,
+                        feature="",
+                        pr_summary=item.get('pr_summary', '') or '',
+                        risk_score=float(item.get('risk_score', 0.0) or 0.0),
+                        risk_band="low",
+                        risk_reasons=[],
+                        additions=item.get('additions', 0) or 0,
+                        deletions=item.get('deletions', 0) or 0,
+                        changed_files=item.get('changed_files', 0) or 0,
+                        file_details=[]
+                    ))
+                
+        elif plan["route"] == "hybrid":
+            print(f"🔍 Using HYBRID route for: {plan['object']}")
+            terms = " ".join(plan.get("semantic_terms") or [request.query])
             
-            # Convert results to list to avoid iteration issues
-            results_list = list(results)
-            
-            # Debug: Print detailed result information
-            total_hits = sum(len(list(hits)) for hits in results_list)
-            print(f"🔍 Total hits across all result sets: {total_hits}")
-            
-            # Debug: Print hit object structure (only for first result)
-            if results_list and len(results_list) > 0:
-                # Convert the first result set to list as well
-                first_result_set = list(results_list[0])
-                if len(first_result_set) > 0:
-                    first_hit = first_result_set[0]
-                    print(f"🔍 Debug: Found {len(first_result_set)} results in first set")
-                    print(f"🔍 Debug: Sample data - PR #{first_hit.fields.get('pr_number', 'N/A')}: {first_hit.fields.get('title', 'N/A')}")
-                    
-                    # Show all PR numbers in first result set
-                    pr_numbers = [hit.fields.get('pr_number', 'N/A') for hit in first_result_set]
-                    print(f"🔍 PR numbers in first result set: {pr_numbers}")
-                    
-                    # Show unique PR numbers and their counts
-                    from collections import Counter
-                    pr_counter = Counter(pr_numbers)
-                    print(f"🔍 PR number frequency: {dict(pr_counter)}")
-        except Exception as search_error:
-            print(f"❌ Milvus search failed: {search_error}")
-            import traceback
-            print(f"Full traceback: {traceback.format_exc()}")
-            raise HTTPException(status_code=500, detail=f"Milvus search failed: {search_error}")
+            if plan["object"] == "features":
+                data = hybrid_features(request.repo_name, start, end, terms, request.limit)
+            else:
+                # Check if this is a specific file search
+                if plan.get("specific_file"):
+                    filename = plan["specific_file"]
+                    print(f"🔍 Specific file search for: {filename}")
+                    from hybrid_handlers import hybrid_file_search
+                    data = hybrid_file_search(request.repo_name, start, end, filename, request.limit)
+                else:
+                    # For general file searches, we need to get the PRs that contain those files
+                    data = hybrid_risky_files(request.repo_name, start, end, terms, request.limit)
+                    print(f"🔍 Hybrid file search returned {len(data)} file changes")
+                    if data:
+                        print(f"   Sample file result: {data[0]}")
         
-        search_results = []
-        seen_pr_ids = set()  # Track seen PR IDs to avoid duplicates
-        seen_pr_numbers = set()  # Track seen PR numbers as backup
-        total_hits_processed = 0
-        duplicates_skipped = 0
+            search_results = []
+            for item in data:
+                if plan["object"] == "features":
+                    search_results.append(SearchResult(
+                        pr_id=item.get('pr_id', 0),
+                        pr_number=item.get('pr_number', 0),
+                        title=item.get('title', '') or '',
+                        content=item.get('pr_summary', '') or '',
+                        text_type="hybrid_feature",
+                        file_path="",
+                        function_name="",
+                        similarity_score=1.0 - (item.get('_distance', 0) or 0),
+                        author=item.get('author_name', '') or '',
+                        created_at=item.get('created_at', 0) or 0,
+                        merged_at=item.get('merged_at', 0) or 0,
+                        status="merged",
+                        is_merged=True,
+                        is_closed=False,
+                        feature="feature",
+                        pr_summary=item.get('pr_summary', '') or '',
+                        risk_score=float(item.get('risk_score', 0.0) or 0.0),
+                        risk_band="low",
+                        risk_reasons=[],
+                        additions=item.get('additions', 0) or 0,
+                        deletions=item.get('deletions', 0) or 0,
+                        changed_files=item.get('changed_files', 0) or 0,
+                        file_details=[]
+                    ))
+                else:
+                    # For file searches, now returning PR data that contains the files
+                    search_results.append(SearchResult(
+                        pr_id=item.get('pr_id', 0),
+                        pr_number=item.get('pr_number', 0),
+                        title=item.get('title', '') or '',
+                        content=item.get('pr_summary', '') or '',
+                        text_type="hybrid_file_pr",
+                        file_path="",  # File path info is not in PR data
+                        function_name="",
+                        similarity_score=1.0,  # No distance for direct PR query
+                        author=item.get('author_name', '') or '',
+                        created_at=item.get('created_at', 0) or 0,
+                        merged_at=item.get('merged_at', 0) or 0,
+                        status="merged",
+                        is_merged=True,
+                        is_closed=False,
+                        feature=item.get('feature', '') or '',
+                        pr_summary=item.get('pr_summary', '') or '',
+                        risk_score=float(item.get('risk_score', 0.0) or 0.0),
+                        risk_band="high" if item.get('risk_score', 0) > 7 else "medium" if item.get('risk_score', 0) > 4 else "low",
+                        risk_reasons=item.get('risk_reasons', []),
+                        additions=item.get('additions', 0) or 0,
+                        deletions=item.get('deletions', 0) or 0,
+                        changed_files=item.get('changed_files', 0) or 0,
+                        file_details=[]
+                    ))
         
-        try:
-            for hits in results_list:
-                # Convert each result set to list to avoid iteration issues
-                hits_list = list(hits)
-                for hit in hits_list:
-                    total_hits_processed += 1
-                    # Extract fields with safe defaults - Use hit.fields for Milvus Hit objects
-                    hit_data = hit.fields if hasattr(hit, 'fields') else {}
-                    pr_id = hit_data.get('pr_id', 0)
-                    pr_number = hit_data.get('pr_number', 0)
-                    title = hit_data.get('title', '') or ''
-                    body = hit_data.get('body', '') or ''
-                    author_name = hit_data.get('author_name', '') or ''
-                    created_at = hit_data.get('created_at', 0) or 0
-                    merged_at = hit_data.get('merged_at', 0) or 0
-                    status = hit_data.get('status', '') or ''
-                    repo_name = hit_data.get('repo_name', '') or ''
-                    is_merged = hit_data.get('is_merged', False) or False
-                    is_closed = hit_data.get('is_closed', False) or False
-                    feature = hit_data.get('feature', '') or ''
-                    pr_summary = hit_data.get('pr_summary', '') or ''
-                    risk_score = float(hit_data.get('risk_score', 0.0) or 0.0)
-                    risk_band = hit_data.get('risk_band', 'low') or 'low'
-                    risk_reasons = hit_data.get('risk_reasons', []) or []
-                    additions = hit_data.get('additions', 0) or 0
-                    deletions = hit_data.get('deletions', 0) or 0
-                    changed_files = hit_data.get('changed_files', 0) or 0
-                    
-                    # Get detailed file information if requested
-                    file_details = []
-                    if query_filters.get('include_file_details'):
-                        try:
-                            file_details = await get_file_details_for_pr(pr_id, repo_name)
-                        except Exception as file_error:
-                            print(f"⚠️ Warning: Failed to get file details for PR {pr_id}: {file_error}")
-                            file_details = []
-                    
-                    # Additional safety check: for "shipped" queries, only include merged PRs with features
-                    should_include = True
-                    if 'shipped' in request.query.lower():
-                        if not is_merged or not feature:
-                            should_include = False
-                            print(f"🔍 Filtering out PR #{pr_number}: not merged ({is_merged}) or no feature ({bool(feature)})")
-                    
-                    # Enhanced deduplication check
-                    is_duplicate = False
-                    if pr_id in seen_pr_ids:
-                        print(f"🔍 Skipping duplicate PR #{pr_number} (ID: {pr_id}) - already seen")
-                        is_duplicate = True
-                        duplicates_skipped += 1
-                    elif pr_number in seen_pr_numbers:
-                        print(f"🔍 Skipping duplicate PR #{pr_number} (ID: {pr_id}) - PR number already seen")
-                        is_duplicate = True
-                        duplicates_skipped += 1
-                    
-                    if is_duplicate:
-                        continue
-                    
-                    if should_include:
-                        seen_pr_ids.add(pr_id)  # Mark this PR as seen
-                        seen_pr_numbers.add(pr_number)  # Mark PR number as seen
+        elif plan["route"] == "vector":
+            print(f"🔍 Using VECTOR route for explanation")
+            terms = " ".join(plan.get("semantic_terms") or [request.query])
+            
+            if plan["object"] == "files":
+                data = vector_risk_analysis(request.repo_name, start, end, terms, request.limit)
+            else:
+                data = vector_explanation(request.repo_name, start, end, terms, request.limit)
+            
+            search_results = []
+            for item in data:
                 search_results.append(SearchResult(
-                    pr_id=pr_id,
-                    pr_number=pr_number,
-                    title=title,
-                            content=body,
-                            text_type="pr_data",
+                    pr_id=item.get('pr_id', 0),
+                    pr_number=item.get('pr_number', 0),
+                    title=item.get('title', '') or '',
+                    content=item.get('pr_summary', '') or '',
+                    text_type="vector_explanation",
                             file_path="",
                             function_name="",
-                    similarity_score=hit.score,
-                            author=author_name,
-                    created_at=created_at,
-                    merged_at=merged_at,
-                    status=status,
-                    is_merged=is_merged,
-                            is_closed=is_closed,
-                            feature=feature,
-                            pr_summary=pr_summary,
-                            risk_score=risk_score,
-                            risk_band=risk_band,
-                            risk_reasons=risk_reasons,
-                            additions=additions,
-                            deletions=deletions,
-                            changed_files=changed_files,
-                            file_details=file_details
-                        ))
+                    similarity_score=1.0 - (item.get('_distance', 0) or 0),
+                    author=item.get('author_name', '') or '',
+                    created_at=item.get('created_at', 0) or 0,
+                    merged_at=item.get('merged_at', 0) or 0,
+                    status="merged",
+                    is_merged=True,
+                    is_closed=False,
+                    feature="",
+                    pr_summary=item.get('pr_summary', '') or '',
+                    risk_score=float(item.get('risk_score', 0.0) or 0.0),
+                    risk_band="high" if item.get('risk_score', 0) > 7 else "medium" if item.get('risk_score', 0) > 4 else "low",
+                    risk_reasons=item.get('risk_reasons', []),
+                    additions=item.get('additions', 0) or 0,
+                    deletions=item.get('deletions', 0) or 0,
+                    changed_files=item.get('changed_files', 0) or 0,
+                    file_details=[]
+                ))
+        
+        print(f"✅ Intelligent search completed, found {len(search_results)} results")
+        
+        # Log detailed results for debugging
+        print(f"📊 DETAILED RESULTS LOG:")
+        print(f"   Query: '{request.query}'")
+        print(f"   Repository: '{request.repo_name}'")
+        print(f"   Time window: {start} to {end}")
+        print(f"   Route: {plan['route']}")
+        print(f"   Object: {plan['object']}")
+        print(f"   Metric: {plan['metric']}")
+        print(f"   Total results: {len(search_results)}")
+
+        if search_results:
+            print(f"   📋 Sample results:")
+            for i, result in enumerate(search_results[:3]):  # Show first 3 results
+                print(f"     Result {i+1}:")
+                print(f"       PR #{result.pr_number}: {result.title}")
+                print(f"       Author: {result.author}")
+                print(f"       Type: {result.text_type}")
+                print(f"       Risk Score: {result.risk_score}")
+                print(f"       Risk Band: {result.risk_band}")
+                print(f"       Feature: {result.feature}")
+                print(f"       Similarity: {result.similarity_score}")
+                print(f"       Content: {result.content[:100]}...")
+                print()
+        else:
+            print(f"   ⚠️ No results found")
+
+        print(f"🔍 END OF SEARCH LOG")
+        print("=" * 80)
             
-            print(f"✅ Processed {len(search_results)} search results (after deduplication)")
-            print(f"🔍 Deduplication stats: {total_hits_processed} total hits processed, {duplicates_skipped} duplicates skipped")
+        return search_results
             
-            # Print summary of results
-            if search_results:
-                print(f"📊 Search Summary:")
-                print(f"   - Total results: {len(search_results)}")
-                print(f"   - Unique PRs: {len(seen_pr_ids)}")
-                print(f"   - Date range: {min(r.created_at for r in search_results)} to {max(r.created_at for r in search_results)}")
-                print(f"   - Risk distribution: {sum(1 for r in search_results if r.risk_band == 'high')} high, {sum(1 for r in search_results if r.risk_band == 'medium')} medium, {sum(1 for r in search_results if r.risk_band == 'low')} low")
-                print(f"   - Features found: {sum(1 for r in search_results if r.feature)}")
-            
-            return search_results
-            
-        except Exception as process_error:
-            print(f"❌ Error processing search results: {process_error}")
-            import traceback
-            print(f"Full traceback: {traceback.format_exc()}")
-            raise HTTPException(status_code=500, detail=f"Error processing search results: {process_error}")
     except Exception as e:
-        print(f"Error performing search: {e}")
-        raise HTTPException(status_code=500, detail=f"Search failed: {e}")
+        print(f"❌ Error in intelligent search: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process search: {e}")
 
 def parse_natural_language_query(query: str) -> dict:
     """Parse natural language query to extract filters"""
@@ -3107,7 +3230,34 @@ async def get_file_details_for_pr(pr_id: int, repo_name: str) -> list:
             limit=100
         )
         
-        return file_results
+        # Deduplicate by file_id to avoid showing the same file multiple times
+        seen_files = set()
+        unique_files = []
+        
+        for file_result in file_results:
+            file_id = file_result.get('file_id', '')
+            if file_id:
+                # Normalize file_id for better deduplication (lowercase and strip)
+                normalized_file_id = file_id.lower().strip()
+                if normalized_file_id not in seen_files:
+                    seen_files.add(normalized_file_id)
+                    unique_files.append(file_result)
+        
+        print(f"🔍 File details for PR {pr_id}:")
+        print(f"   Raw file results: {len(file_results)}")
+        print(f"   Unique files after deduplication: {len(unique_files)}")
+        
+        # Debug: Show all file_ids to identify duplicates
+        if len(file_results) > len(unique_files):
+            print(f"   🔍 Duplicate files found:")
+            all_file_ids = [f.get('file_id', '') for f in file_results]
+            from collections import Counter
+            file_counts = Counter(all_file_ids)
+            duplicates = {fid: count for fid, count in file_counts.items() if count > 1}
+            for file_id, count in duplicates.items():
+                print(f"     '{file_id}': {count} times")
+        
+        return unique_files
     except Exception as e:
         print(f"Error getting file details for PR {pr_id}: {e}")
         return []
@@ -3124,7 +3274,7 @@ async def pr_details_page(
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>PR Details - What the repo-gpt</title>
+        <title>PR Details - WhatTheRepo</title>
         <style>
             * {{
                 margin: 0;
@@ -3381,7 +3531,7 @@ async def pr_details_page(
     <body>
         <div class="header">
             <div class="nav-container">
-                <a href="/" class="logo">🔍 What the repo</a>
+                <a href="/" class="logo">🔍 WhatTheRepo</a>
                 <a href="/" class="back-button">← Back to Home</a>
             </div>
         </div>
@@ -3586,8 +3736,32 @@ async def get_pr_details(
                     limit=100
                 )
                 
-                file_details = file_results
-                print(f"🔍 File query returned {len(file_details)} file records")
+                # Deduplicate by file_id to avoid showing the same file multiple times
+                seen_files = set()
+                unique_files = []
+                
+                for file_result in file_results:
+                    file_id = file_result.get('file_id', '')
+                    if file_id:
+                        # Normalize file_id for better deduplication (lowercase and strip)
+                        normalized_file_id = file_id.lower().strip()
+                        if normalized_file_id not in seen_files:
+                            seen_files.add(normalized_file_id)
+                            unique_files.append(file_result)
+                
+                file_details = unique_files
+                print(f"🔍 File query returned {len(file_results)} file records")
+                print(f"🔍 After deduplication: {len(file_details)} unique files")
+                
+                # Debug: Show all file_ids to identify duplicates
+                if len(file_results) > len(file_details):
+                    print(f"   🔍 Duplicate files found:")
+                    all_file_ids = [f.get('file_id', '') for f in file_results]
+                    from collections import Counter
+                    file_counts = Counter(all_file_ids)
+                    duplicates = {fid: count for fid, count in file_counts.items() if count > 1}
+                    for file_id, count in duplicates.items():
+                        print(f"     '{file_id}': {count} times")
             else:
                 print(f"⚠️ File collection '{file_collection_name}' does not exist")
         except Exception as file_error:
@@ -4104,7 +4278,7 @@ if __name__ == "__main__":
         print(f"Error: Missing required environment variables: {', '.join(missing_vars)}")
         exit(1)
     
-    print("Starting What the repo-gpt...")
+    print("Starting WhatTheRepo...")
     print("Environment variables configured successfully")
     
     # Initialize connections
