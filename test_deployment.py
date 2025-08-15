@@ -25,9 +25,9 @@ def test_imports():
         print("Testing utility dependencies...")
         import numpy
         import requests
-        import httpx
-        import structlog
         import dotenv
+        import marshmallow
+        import environs
         print("✅ Utility dependencies imported successfully")
         
         print("Testing application modules...")
