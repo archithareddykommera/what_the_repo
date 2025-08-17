@@ -193,11 +193,11 @@ class EngineerLensDataProcessor:
                     author_name = pr['user'].get('login', '').strip()
                 
                 if author_name and author_name not in authors:
-                        authors[author_name] = {
-                            'username': author_name,
-                            'display_name': author_name,  # Could be enhanced with GitHub API
-                            'avatar_url': f"https://github.com/{author_name}.png"  # Default GitHub avatar
-                        }
+                    authors[author_name] = {
+                        'username': author_name,
+                        'display_name': author_name,  # Could be enhanced with GitHub API
+                        'avatar_url': f"https://github.com/{author_name}.png"  # Default GitHub avatar
+                    }
             
             # Upsert authors to Supabase
             if authors:
@@ -389,7 +389,7 @@ class EngineerLensDataProcessor:
                 metric_found = False
                 for metric in daily_metrics:
                     if metric['username'] == author and metric['day'] == created_date.isoformat():
-                # Count submitted PRs
+                        # Count submitted PRs
                         metric['prs_submitted'] += 1
                         
                         # Count high risk PRs from submitted PRs using pr_risk_assessment.high_risk flag
@@ -770,23 +770,6 @@ class EngineerLensDataProcessor:
                 logger.debug(f"[DEBUG] PR {pr.get('pr_number', 'unknown')} has {len(files)} files")
                 
                 # Process each file in the PR
-                files_with_changes = 0
-                for file_data in files:
-                    filename = file_data.get('filename', '')
-                    if not filename:
-                        continue
-                    
-                    # Get additions and deletions for this specific file
-                    additions = file_data.get('additions', 0)
-                    deletions = file_data.get('deletions', 0)
-                    lines_changed = additions + deletions
-                    
-                    if lines_changed > 0:
-                        files_with_changes += 1
-                
-                logger.debug(f"[DEBUG] PR {pr.get('pr_number', 'unknown')} has {files_with_changes} files with changes")
-                
-                # Process each file in the PR
                 for file_data in files:
                     filename = file_data.get('filename', '')
                     if not filename:
@@ -890,7 +873,7 @@ class EngineerLensDataProcessor:
                     window_end_date = end_date
                     window_start_date = end_date - timedelta(days=window_days - 1)
                 
-                # Filter PRs to window period and merged status
+            # Filter PRs to window period and merged status
                 window_prs = []
                 
                 for pr in pr_data:
@@ -918,75 +901,75 @@ class EngineerLensDataProcessor:
                         window_prs.append(pr)
                 
                 logger.info(f"[DEBUG] Found {len(window_prs)} PRs in {window_days}-day window ({window_start_date} to {window_end_date})")
+            
+            pr_window_data = []
+            
+            for pr in window_prs:
+                # Handle different possible author field names
+                author = None
+                if 'author_name' in pr:
+                    author = pr.get('author_name', '').strip()
+                elif 'author' in pr and isinstance(pr['author'], dict):
+                    author = pr['author'].get('login', '').strip()
+                elif 'user' in pr and isinstance(pr['user'], dict):
+                    author = pr['user'].get('login', '').strip()
                 
-                pr_window_data = []
+                # Debug: Log author extraction
+                if not author:
+                    logger.debug(f"[DEBUG] Could not extract author from PR {pr.get('pr_number', 'unknown')}. Available fields: {list(pr.keys())}")
+                    if 'author' in pr:
+                        logger.debug(f"[DEBUG] Author field content: {pr['author']}")
+                    if 'user' in pr:
+                        logger.debug(f"[DEBUG] User field content: {pr['user']}")
+                    continue
                 
-                for pr in window_prs:
-                    # Handle different possible author field names
-                    author = None
-                    if 'author_name' in pr:
-                        author = pr.get('author_name', '').strip()
-                    elif 'author' in pr and isinstance(pr['author'], dict):
-                        author = pr['author'].get('login', '').strip()
-                    elif 'user' in pr and isinstance(pr['user'], dict):
-                        author = pr['user'].get('login', '').strip()
-                    
-                    # Debug: Log author extraction
-                    if not author:
-                        logger.debug(f"[DEBUG] Could not extract author from PR {pr.get('pr_number', 'unknown')}. Available fields: {list(pr.keys())}")
-                        if 'author' in pr:
-                            logger.debug(f"[DEBUG] Author field content: {pr['author']}")
-                        if 'user' in pr:
-                            logger.debug(f"[DEBUG] User field content: {pr['user']}")
-                        continue
-                    
-                    # Determine feature classification
-                    feature_rule = 'excluded'
-                    feature_confidence = 0.0
-                    
-                    if pr.get('feature') and pr.get('feature') is not None:
-                        feature_rule = 'title-allow'
-                        feature_confidence = 0.8
-                    elif 'feature' in pr.get('title', '').lower():
-                        feature_rule = 'title-allow'
-                        feature_confidence = 0.6
-                    elif float(pr.get('risk_score', 0)) < 3.0:  # Low risk PRs might be features
-                        feature_rule = 'unlabeled-include'
-                        feature_confidence = 0.3
-                    
-                    # Handle merged_at timestamp for output
-                    merged_at = pr.get('merged_at')
-                    merged_at_iso = None
-                    if isinstance(merged_at, str):
-                        try:
-                            merged_at_iso = datetime.fromisoformat(merged_at.replace('Z', '+00:00')).isoformat()
-                        except:
-                            merged_at_iso = merged_at
-                    elif isinstance(merged_at, (int, float)):
-                        merged_at_iso = datetime.fromtimestamp(merged_at).isoformat()
-                    
-                    # Convert window_days to integer for database storage
-                    if window_days == 'all_time':
-                        window_days_int = 999  # Special value for all_time
-                    else:
-                        window_days_int = window_days
-                    
-                    pr_window_data.append({
-                        'username': author,
-                        'repo_name': repo_name,
-                        'window_days': window_days_int,
-                        'start_date': window_start_date.isoformat(),
-                        'end_date': window_end_date.isoformat(),
-                        'pr_number': pr.get('pr_number', 0),
-                        'title': pr.get('title', ''),
-                        'pr_summary': pr.get('body', ''),  # Use 'body' field for PR summary
-                        'merged_at': merged_at_iso,
-                        'risk_score': round(float(pr.get('risk_score', 0)), 2),
-                        'high_risk': float(pr.get('risk_score', 0)) >= 7.0,
-                        'feature_rule': feature_rule,
-                        'feature_confidence': round(float(feature_confidence), 2)
-                    })
+                # Determine feature classification
+                feature_rule = 'excluded'
+                feature_confidence = 0.0
                 
+                if pr.get('feature') and pr.get('feature') is not None:
+                    feature_rule = 'title-allow'
+                    feature_confidence = 0.8
+                elif 'feature' in pr.get('title', '').lower():
+                    feature_rule = 'title-allow'
+                    feature_confidence = 0.6
+                elif float(pr.get('risk_score', 0)) < 3.0:  # Low risk PRs might be features
+                    feature_rule = 'unlabeled-include'
+                    feature_confidence = 0.3
+                
+                # Handle merged_at timestamp for output
+                merged_at = pr.get('merged_at')
+                merged_at_iso = None
+                if isinstance(merged_at, str):
+                    try:
+                        merged_at_iso = datetime.fromisoformat(merged_at.replace('Z', '+00:00')).isoformat()
+                    except:
+                        merged_at_iso = merged_at
+                elif isinstance(merged_at, (int, float)):
+                    merged_at_iso = datetime.fromtimestamp(merged_at).isoformat()
+                
+                # Convert window_days to integer for database storage
+                if window_days == 'all_time':
+                    window_days_int = 999  # Special value for all_time
+                else:
+                    window_days_int = window_days
+                
+                pr_window_data.append({
+                    'username': author,
+                    'repo_name': repo_name,
+                    'window_days': window_days_int,
+                    'start_date': window_start_date.isoformat(),
+                    'end_date': window_end_date.isoformat(),
+                    'pr_number': pr.get('pr_number', 0),
+                    'title': pr.get('title', ''),
+                    'pr_summary': pr.get('body', ''),  # Use 'body' field for PR summary
+                    'merged_at': merged_at_iso,
+                    'risk_score': round(float(pr.get('risk_score', 0)), 2),
+                    'high_risk': float(pr.get('risk_score', 0)) >= 7.0,
+                    'feature_rule': feature_rule,
+                    'feature_confidence': round(float(feature_confidence), 2)
+                })
+            
                 all_pr_window_data.extend(pr_window_data)
                 logger.info(f"[INFO] Processed {len(pr_window_data)} PRs for {window_days}-day window")
             

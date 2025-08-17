@@ -165,15 +165,21 @@ class EngineerLensUI:
             print(f"❌ Error fetching engineers for {repo_name}: {e}")
             return []
     
-    def get_engineer_metrics(self, username: str, repo_name: str, window_days: int = 30) -> Dict:
+    def get_engineer_metrics(self, username: str, repo_name: str, window_days: int = 999) -> Dict:
         """Get comprehensive metrics for a specific engineer"""
         try:
-            # Calculate date range
-            end_date = date.today()
-            start_date = end_date - timedelta(days=window_days)
-            
-            # Get window metrics
-            metrics_response = self.supabase_client.table('author_metrics_window').select('*').eq('username', username).eq('repo_name', repo_name).eq('window_days', window_days).eq('end_date', end_date.isoformat()).execute()
+            # Handle all_time window (999)
+            if window_days == 999:
+                # For all_time, we don't need to calculate date range
+                # Just get the metrics with window_days = 999
+                metrics_response = self.supabase_client.table('author_metrics_window').select('*').eq('username', username).eq('repo_name', repo_name).eq('window_days', 999).execute()
+            else:
+                # Calculate date range for specific window periods
+                end_date = date.today()
+                start_date = end_date - timedelta(days=window_days)
+                
+                # Get window metrics
+                metrics_response = self.supabase_client.table('author_metrics_window').select('*').eq('username', username).eq('repo_name', repo_name).eq('window_days', window_days).eq('end_date', end_date.isoformat()).execute()
             
             if not metrics_response.data:
                 # Return empty metrics if no data found
@@ -192,10 +198,16 @@ class EngineerLensUI:
             metrics = metrics_response.data[0]
             
             # Get file ownership data
-            ownership_response = self.supabase_client.table('author_file_ownership').select('*').eq('username', username).eq('repo_name', repo_name).eq('window_days', window_days).eq('end_date', end_date.isoformat()).order('ownership_pct', desc=True).limit(10).execute()
+            if window_days == 999:
+                ownership_response = self.supabase_client.table('author_file_ownership').select('*').eq('username', username).eq('repo_name', repo_name).eq('window_days', 999).order('ownership_pct', desc=True).limit(10).execute()
+            else:
+                ownership_response = self.supabase_client.table('author_file_ownership').select('*').eq('username', username).eq('repo_name', repo_name).eq('window_days', window_days).eq('end_date', end_date.isoformat()).order('ownership_pct', desc=True).limit(10).execute()
             
             # Get PR features data
-            features_response = self.supabase_client.table('author_prs_window').select('*').eq('username', username).eq('repo_name', repo_name).eq('window_days', window_days).eq('end_date', end_date.isoformat()).order('merged_at', desc=True).limit(10).execute()
+            if window_days == 999:
+                features_response = self.supabase_client.table('author_prs_window').select('*').eq('username', username).eq('repo_name', repo_name).eq('window_days', 999).order('merged_at', desc=True).limit(10).execute()
+            else:
+                features_response = self.supabase_client.table('author_prs_window').select('*').eq('username', username).eq('repo_name', repo_name).eq('window_days', window_days).eq('end_date', end_date.isoformat()).order('merged_at', desc=True).limit(10).execute()
             
             return {
                 'username': username,
@@ -223,7 +235,7 @@ class EngineerLensUI:
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Engineer Lens - WhatTheRepo</title>
+            <title>Engineer Profile - WhatTheRepo</title>
             <style>
                 * {{
                     margin: 0;
@@ -713,7 +725,7 @@ class EngineerLensUI:
             
             <div class="main-content">
                 <div class="page-title">
-                    <h1>Engineer Lens</h1>
+                    <h1>Engineer Profile</h1>
                     <p>Get an engineer's preview into their contribution, throughput, and code impact</p>
                     <div class="repo-info">
                         <h3>Selected Repository</h3>
@@ -723,16 +735,18 @@ class EngineerLensUI:
                 
                 <div class="engineer-selector">
                     <h2>Select Engineer</h2>
-                    <p>Choose an engineer to view their contribution metrics and insights</p>
+                    <p>Choose an engineer to view their profile, metrics and insights</p>
                     <div class="select-container">
                         <select id="engineer-select" class="engineer-select">
                             <option value="">Loading engineers...</option>
                         </select>
                         <select id="time-filter" class="time-select">
+                            <option value="999">All time</option>
+                            <option value="7">Last 7 days</option>
+                            <option value="15">Last 15 days</option>
                             <option value="30">Last 30 days</option>
+                            <option value="60">Last 60 days</option>
                             <option value="90">Last 90 days</option>
-                            <option value="180">Last 6 months</option>
-                            <option value="365">Last year</option>
                         </select>
                     </div>
                 </div>
@@ -798,7 +812,7 @@ class EngineerLensUI:
                 <div class="placeholder-content" id="placeholder-content">
                     <div class="placeholder-icon">👤</div>
                     <div class="placeholder-text">
-                        <p>Select an engineer from the dropdown above to view their detailed contribution metrics and insights.</p>
+                        <p>Select an engineer from the dropdown above to view their detailed profile, metrics and insights.</p>
                         <p>This will show:</p>
                         <ul style="text-align: left; max-width: 600px; margin: 1rem auto;">
                             <li>Throughput metrics (PRs submitted, merged)</li>
@@ -814,7 +828,7 @@ class EngineerLensUI:
             <script>
                 const repoName = '{repo_name}';
                 let selectedEngineer = '';
-                let selectedTimeWindow = 30;
+                let selectedTimeWindow = 999; // Default to all_time
                 
                 // Load engineers on page load
                 document.addEventListener('DOMContentLoaded', function() {{
@@ -1592,8 +1606,8 @@ async def home_page():
             
                     <div class="navigation-grid" id="navigation-grid">
                         <div class="nav-card" onclick="navigateToPage('/engineering-lens')">
-                            <span class="nav-icon">🔬</span>
-                            <h2>Engineer Lens</h2>
+                            <span class="nav-icon">👤</span>
+                            <h2>Engineer Profile</h2>
                             <p>Get an engineer's or author's preview into their contribution, throughput, review activity, and code impact</p>
                             <button class="nav-button" onclick="navigateToPage('/engineering-lens')" disabled>View Profile</button>
                         </div>
@@ -1704,10 +1718,10 @@ async def home_page():
                         // Show only the three specific example queries
                         const specificQueries = [
                             {
-                                query: `What was shipped in ${selectedRepo} last week?`,
+                                query: `What was shipped in ${selectedRepo} last month?`,
                                 type: "Time-based",
-                                description: `Find PRs shipped in ${selectedRepo} last 7 days with features and improvements.`,
-                                tags: ["time", "last_week", "shipped", "features"]
+                                description: `Find PRs shipped in ${selectedRepo} last 30 days with features and improvements.`,
+                                tags: ["time", "last_month", "shipped", "features"]
                             },
                             {
                                 query: `What are the top 5 riskiest PRs in ${selectedRepo}?`,
@@ -2592,21 +2606,11 @@ async def what_shipped_page(repo: str = Query(None, description="Selected reposi
                 document.getElementById('prsContainer').innerHTML = '<div class="loading">Loading pull requests...</div>';
                 
                 try {{
-                    // Load summary data
-                    const summaryResponse = await fetch(`/api/what-shipped-summary?repo=${{currentRepo}}&time_window=${{timeWindow}}`);
-                    const summaryData = await summaryResponse.json();
-                    
-                    // Update summary cards
-                    document.getElementById('totalPrs').textContent = summaryData.total_prs;
-                    document.getElementById('totalFeatures').textContent = summaryData.features;
-                    document.getElementById('totalHighRisk').textContent = summaryData.high_risk;
-                    document.getElementById('totalMerged').textContent = summaryData.merged;
-                    
-                    // Load PR data
+                    // Load PR data first with higher limit to get accurate summary
                     const params = new URLSearchParams({{
                         repo: currentRepo,
                         time_window: timeWindow,
-                        limit: 50
+                        limit: 1000 // Get more data for accurate summary
                     }});
                     
                     if (author) params.append('author', author);
@@ -2616,11 +2620,25 @@ async def what_shipped_page(repo: str = Query(None, description="Selected reposi
                     const prsResponse = await fetch(`/api/what-shipped-data?${{params}}`);
                     const prsData = await prsResponse.json();
                     
-                    // Update PR count
-                    document.getElementById('prsCount').textContent = `${{prsData.total}} PRs`;
+                    // Calculate summary from filtered data
+                    const filteredData = prsData.data;
+                    const totalPrs = filteredData.length;
+                    const features = filteredData.filter(pr => pr.feature_rule !== 'excluded').length;
+                    const highRisk = filteredData.filter(pr => pr.high_risk).length;
+                    const merged = filteredData.filter(pr => pr.is_merged).length;
                     
-                    // Render PRs
-                    renderPRs(prsData.data);
+                    // Update summary cards with filtered data
+                    document.getElementById('totalPrs').textContent = totalPrs;
+                    document.getElementById('totalFeatures').textContent = features;
+                    document.getElementById('totalHighRisk').textContent = highRisk;
+                    document.getElementById('totalMerged').textContent = merged;
+                    
+                    // Update PR count
+                    document.getElementById('prsCount').textContent = `${{totalPrs}} PRs`;
+                    
+                    // Render PRs (limit to 50 for display)
+                    const displayData = filteredData.slice(0, 50);
+                    renderPRs(displayData);
                     
                 }} catch (error) {{
                     console.error('Error loading data:', error);
@@ -4047,7 +4065,7 @@ async def get_engineers(repo: str = Query(..., description="Repository name")):
 async def get_engineer_metrics(
     username: str = Query(..., description="Engineer username"),
     repo: str = Query(..., description="Repository name"),
-    window_days: int = Query(30, description="Time window in days")
+    window_days: int = Query(999, description="Time window in days (999 for all_time)")
 ):
     """Get metrics for a specific engineer"""
     if not engineer_lens_ui:

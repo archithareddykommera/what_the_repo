@@ -2,7 +2,7 @@
 """
 What Shipped Data Processor
 
-This script extracts data from Milvus collections and populates the repo_prs Supabase table
+This script extracts data from JSON file and populates the repo_prs Supabase table
 for the "What shipped" UI page. It processes PR data to identify features, calculate risk scores,
 and prepare data for the shipping dashboard.
 
@@ -27,10 +27,9 @@ from collections import defaultdict, Counter
 import argparse
 import logging
 
-# Database and vector store imports
+# Database imports
 import psycopg2
 from psycopg2.extras import RealDictCursor, execute_values
-from pymilvus import connections, Collection, utility
 from supabase import create_client, Client
 
 # Configure logging
@@ -46,52 +45,70 @@ logger = logging.getLogger(__name__)
 
 class WhatShippedDataProcessor:
     def __init__(self):
-        """Initialize connections to Milvus and Supabase"""
-        self.milvus_collection = None
-        self.file_collection = None
+        """Initialize connections to Supabase and load JSON data"""
         self.supabase_client = None
         self.pg_conn = None
+        self.json_data = None
         
-        # Configuration - define these before initializing connections
-        self.pr_collection_name =  'pr_index_what_the_repo'
-        self.file_collection_name = 'file_changes_what_the_repo'
+        # JSON file path - use script directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.json_file_path = os.path.join(script_dir, 'pr_data_20250811_235048.json')
         
-        # Initialize connections
-        self._init_milvus()
+        # Initialize connections and load JSON data
+        self._load_json_data()
         self._init_supabase()
         
-    def _init_milvus(self):
-        """Initialize Milvus connection"""
+    def _load_json_data(self):
+        """Load PR data from JSON file"""
         try:
-            milvus_url = os.getenv('MILVUS_URL')
-            milvus_token = os.getenv('MILVUS_TOKEN')
+            if not os.path.exists(self.json_file_path):
+                raise FileNotFoundError(f"JSON file not found: {self.json_file_path}")
             
-            if not milvus_url or not milvus_token:
-                raise ValueError("MILVUS_URL and MILVUS_TOKEN environment variables are required")
+            logger.info(f"[INFO] Loading PR data from {self.json_file_path}...")
+            with open(self.json_file_path, 'r', encoding='utf-8') as f:
+                raw_data = json.load(f)
             
-            connections.connect(
-                alias="default",
-                uri=milvus_url,
-                token=milvus_token
-            )
+            # Handle different JSON structures
+            if isinstance(raw_data, dict):
+                # If it's a dict, it might have a 'data' key or be a single PR
+                if 'data' in raw_data:
+                    self.json_data = raw_data['data']
+                elif 'prs' in raw_data:
+                    self.json_data = raw_data['prs']
+                elif 'pull_requests' in raw_data:
+                    self.json_data = raw_data['pull_requests']
+                else:
+                    # Assume it's a single PR object
+                    self.json_data = [raw_data]
+            elif isinstance(raw_data, list):
+                # If it's a list, check if it contains objects with 'pull_requests' key
+                if raw_data and isinstance(raw_data[0], dict) and 'pull_requests' in raw_data[0]:
+                    # Extract pull_requests from each item in the list
+                    all_prs = []
+                    for item in raw_data:
+                        if isinstance(item, dict) and 'pull_requests' in item:
+                            all_prs.extend(item['pull_requests'])
+                    self.json_data = all_prs
+                else:
+                    # If it's already a list of PRs, use it directly
+                    self.json_data = raw_data
+            else:
+                raise ValueError(f"Unexpected JSON structure: {type(raw_data)}")
             
-            # Load PR collection
-            if not utility.has_collection(self.pr_collection_name):
-                raise ValueError(f"Collection '{self.pr_collection_name}' does not exist")
+            # Ensure we have a list of dictionaries
+            if not isinstance(self.json_data, list):
+                raise ValueError(f"Expected list of PRs, got {type(self.json_data)}")
             
-            self.milvus_collection = Collection(self.pr_collection_name)
-            self.milvus_collection.load()
+            # Validate that each item is a dictionary
+            for i, item in enumerate(self.json_data):
+                if not isinstance(item, dict):
+                    raise ValueError(f"Item {i} is not a dictionary: {type(item)}")
             
-            # Load file collection if it exists
-            if utility.has_collection(self.file_collection_name):
-                self.file_collection = Collection(self.file_collection_name)
-                self.file_collection.load()
-                logger.info(f"[SUCCESS] Loaded file collection: {self.file_collection_name}")
-            
-            logger.info(f"[SUCCESS] Connected to Milvus collection: {self.pr_collection_name}")
+            logger.info(f"[SUCCESS] Loaded {len(self.json_data)} PR records from JSON")
+            logger.info(f"[DEBUG] Sample PR keys: {list(self.json_data[0].keys()) if self.json_data else 'No data'}")
             
         except Exception as e:
-            logger.error(f"[ERROR] Failed to initialize Milvus: {e}")
+            logger.error(f"[ERROR] Failed to load JSON data: {e}")
             raise
     
     def _init_supabase(self):
@@ -123,94 +140,78 @@ class WhatShippedDataProcessor:
             raise
     
     def get_all_repositories(self) -> List[str]:
-        """Get list of all repositories in the Milvus collection"""
+        """Get list of all repositories from JSON data"""
         try:
-            results = self.milvus_collection.query(
-                expr="",
-                output_fields=["repo_name"],
-                limit=10000
-            )
+            logger.info(f"[DEBUG] JSON data type: {type(self.json_data)}")
+            logger.info(f"[DEBUG] JSON data length: {len(self.json_data) if self.json_data else 0}")
             
-            repo_names = list(set(result['repo_name'] for result in results if result.get('repo_name')))
+            if not self.json_data:
+                logger.warning("[WARNING] No JSON data available")
+                return []
+            
+            # Debug: Show first item structure
+            if self.json_data:
+                first_item = self.json_data[0]
+                logger.info(f"[DEBUG] First item type: {type(first_item)}")
+                logger.info(f"[DEBUG] First item keys: {list(first_item.keys()) if isinstance(first_item, dict) else 'Not a dict'}")
+                logger.info(f"[DEBUG] First item repo_name: {first_item.get('repo_name', 'NOT_FOUND') if isinstance(first_item, dict) else 'Not a dict'}")
+            
+            repo_names = []
+            for pr in self.json_data:
+                if isinstance(pr, dict):
+                    repo_name = pr.get('repo_name', '')
+                    if repo_name:
+                        repo_names.append(repo_name)
+                else:
+                    logger.warning(f"[WARNING] Skipping non-dict item: {type(pr)}")
+            
+            repo_names = list(set(repo_names))  # Remove duplicates
             repo_names.sort()
             
             logger.info(f"[INFO] Found {len(repo_names)} repositories: {repo_names}")
             return repo_names
             
         except Exception as e:
-            logger.error(f"[ERROR] Error fetching repositories: {e}")
+            logger.error(f"[ERROR] Error extracting repositories: {e}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             return []
     
     def get_pr_data_for_repo(self, repo_name: str) -> List[Dict]:
-        """Get all PR data for a specific repository"""
+        """Get all PR data for a specific repository from JSON"""
         try:
-            # Query all PRs for the repository
-            expr = f'repo_name == "{repo_name}"'
+            # Filter PRs for the repository
+            pr_data = [pr for pr in self.json_data if pr.get('repo_name') == repo_name]
             
-            results = self.milvus_collection.query(
-                expr=expr,
-                output_fields=[
-                    "pr_id", "pr_number", "title", "body", "author_name", 
-                    "created_at", "merged_at", "status", "repo_name", 
-                    "is_merged", "is_closed", "feature", "pr_summary", 
-                    "risk_score", "risk_band", "risk_reasons", 
-                    "additions", "deletions", "changed_files"
-                ],
-                limit=10000
-            )
-            
-            logger.info(f"[INFO] Found {len(results)} PRs for {repo_name}")
-            return results
+            logger.info(f"[INFO] Found {len(pr_data)} PRs for {repo_name}")
+            return pr_data
             
         except Exception as e:
-            logger.error(f"[ERROR] Error fetching PR data for {repo_name}: {e}")
+            logger.error(f"[ERROR] Error filtering PR data for {repo_name}: {e}")
             return []
     
-    def get_file_data_for_prs(self, repo_name: str, pr_ids: List[int]) -> Dict[int, List[Dict]]:
-        """Get file data for specific PRs"""
-        if not self.file_collection:
-            logger.warning("[WARNING] File collection not available")
-            return {}
-        
-        try:
-            # Query file changes for the PRs
-            pr_ids_str = ','.join(map(str, pr_ids))
-            expr = f'repo_name == "{repo_name}" and pr_id in [{pr_ids_str}]'
-            
-            results = self.file_collection.query(
-                expr=expr,
-                output_fields=[
-                    "file_id", "file_path", "file_status", "language", 
-                    "additions", "deletions", "lines_changed", "ai_summary", 
-                    "risk_score_file", "high_risk_flag", "pr_id", "author_name"
-                ],
-                limit=10000
-            )
-            
-            # Group by PR ID
-            files_by_pr = defaultdict(list)
-            for file_change in results:
-                pr_id = file_change.get('pr_id')
-                if pr_id:
-                    files_by_pr[pr_id].append(file_change)
-            
-            logger.info(f"[INFO] Found file data for {len(files_by_pr)} PRs in {repo_name}")
-            return dict(files_by_pr)
-            
-        except Exception as e:
-            logger.error(f"[ERROR] Error fetching file data for {repo_name}: {e}")
-            return {}
-    
     def determine_feature_classification(self, pr: Dict) -> Tuple[str, float]:
-        """Determine feature classification and confidence for a PR"""
-        title = pr.get('title', '').lower()
-        body = pr.get('body', '').lower()
+        """Determine feature classification and confidence for a PR using the 'feature' attribute from JSON"""
+        # Use the 'feature' attribute from JSON data
         feature = pr.get('feature', '')
-        risk_score = float(pr.get('risk_score', 0))
         
-        # Check if already classified as feature
-        if feature:
+        # If feature attribute exists and is not empty, classify as feature
+        if feature and feature.strip():
             return 'label-allow', 0.9
+        
+        # Fallback to title/body analysis if no feature attribute
+        title = pr.get('title', '')
+        body = pr.get('body', '')
+        
+        # Handle None values safely
+        title = title.lower() if title else ''
+        body = body.lower() if body else ''
+        
+        # Get risk score from pr_risk_assessment
+        risk_assessment = pr.get('pr_risk_assessment', {})
+        if not risk_assessment:
+            risk_assessment = {}
+        risk_score = float(risk_assessment.get('risk_score', 0))
         
         # Check title for feature indicators
         feature_keywords = [
@@ -238,8 +239,11 @@ class WhatShippedDataProcessor:
         """Extract labels from PR data"""
         labels = []
         
-        # Add risk-based labels
-        risk_score = float(pr.get('risk_score', 0))
+        # Add risk-based labels from pr_risk_assessment
+        risk_assessment = pr.get('pr_risk_assessment', {})
+        if not risk_assessment:
+            risk_assessment = {}
+        risk_score = float(risk_assessment.get('risk_score', 0))
         if risk_score >= 7.0:
             labels.append('high-risk')
         elif risk_score >= 4.0:
@@ -273,8 +277,38 @@ class WhatShippedDataProcessor:
         
         return labels
     
+    def get_top_risky_files_from_pr(self, pr: Dict, max_files: int = 5) -> List[Dict]:
+        """Get top risky files from PR data"""
+        files = pr.get('files', [])
+        if not files:
+            return []
+        
+        # Sort by risk score and lines changed
+        sorted_files = sorted(
+            files,
+            key=lambda f: (float(f.get('risk_assessment', {}).get('risk_score_file', 0) if f.get('risk_assessment') else 0), f.get('lines_changed', 0)),
+            reverse=True
+        )
+        
+        top_files = []
+        for file_change in sorted_files[:max_files]:
+            risk_assessment = file_change.get('risk_assessment', {})
+            if not risk_assessment:
+                risk_assessment = {}
+            risk_score = float(risk_assessment.get('risk_score_file', 0))
+            if risk_score > 0:  # Only include files with risk scores
+                top_files.append({
+                    'file_path': file_change.get('filename', ''),
+                    'risk': risk_score,
+                    'lines': file_change.get('lines_changed', 0),
+                    'status': file_change.get('status', ''),
+                    'language': file_change.get('language', '')
+                })
+        
+        return top_files
+    
     def get_top_risky_files(self, files: List[Dict], max_files: int = 5) -> List[Dict]:
-        """Get top risky files for a PR"""
+        """Get top risky files for a PR (legacy method)"""
         if not files:
             return []
         
@@ -302,35 +336,49 @@ class WhatShippedDataProcessor:
     def process_pr_for_repo_prs(self, pr: Dict, files: List[Dict] = None) -> Dict:
         """Process a single PR for the repo_prs table"""
         try:
-            # Determine feature classification
+            # Determine feature classification using the 'feature' attribute from JSON
             feature_rule, feature_confidence = self.determine_feature_classification(pr)
             
             # Extract labels
             labels = self.extract_labels(pr)
             
-            # Get top risky files
-            top_risky_files = self.get_top_risky_files(files or [])
+            # Get top risky files from the files array in the PR
+            top_risky_files = self.get_top_risky_files_from_pr(pr)
             
-            # Convert timestamps to ISO format
-            created_at = datetime.fromtimestamp(pr.get('created_at', 0)).isoformat()
+            # Convert ISO timestamps to datetime objects
+            created_at = pr.get('created_at', '')
+            if created_at:
+                try:
+                    created_at_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    created_at = created_at_dt.isoformat()
+                except:
+                    created_at = datetime.now().isoformat()
             
             # Handle merged_at timestamp
             merged_at = None
             if pr.get('merged_at'):
-                merged_at = datetime.fromtimestamp(pr.get('merged_at', 0)).isoformat()
+                try:
+                    merged_at_dt = datetime.fromisoformat(pr.get('merged_at').replace('Z', '+00:00'))
+                    merged_at = merged_at_dt.isoformat()
+                except:
+                    merged_at = created_at if pr.get('is_merged') else None
             elif pr.get('is_merged'):
                 # If marked as merged but no merged_at timestamp, use created_at
                 merged_at = created_at
                 logger.debug(f"PR #{pr.get('pr_number')}: Using created_at as merged_at (no merged_at timestamp)")
-            else:
-                # For non-merged PRs, leave merged_at as None (schema should allow NULL)
-                logger.debug(f"PR #{pr.get('pr_number')}: Non-merged PR, merged_at will be NULL")
             
-            # Handle risk reasons
-            risk_reasons = pr.get('risk_reasons', [])
-            if isinstance(risk_reasons, dict):
-                risk_reasons = list(risk_reasons.values())
-            elif not isinstance(risk_reasons, list):
+            # Extract author from user object
+            author = ''
+            if pr.get('user') and isinstance(pr['user'], dict):
+                author = pr['user'].get('login', '')
+            
+            # Extract risk assessment data
+            risk_assessment = pr.get('pr_risk_assessment', {})
+            if not risk_assessment:
+                risk_assessment = {}
+            risk_score = float(risk_assessment.get('risk_score', 0))
+            risk_reasons = risk_assessment.get('risk_reasons', [])
+            if not isinstance(risk_reasons, list):
                 risk_reasons = []
             
             # Build the record
@@ -339,7 +387,7 @@ class WhatShippedDataProcessor:
                 'pr_number': pr.get('pr_number', 0),
                 'title': pr.get('title', ''),
                 'pr_summary': pr.get('pr_summary', ''),
-                'author': pr.get('author_name', ''),
+                'author': author,
                 'created_at': created_at,
                 'merged_at': merged_at,
                 'is_merged': pr.get('is_merged', False),
@@ -349,8 +397,8 @@ class WhatShippedDataProcessor:
                 'labels_full': labels,
                 'feature_rule': feature_rule,
                 'feature_confidence': feature_confidence,
-                'risk_score': float(pr.get('risk_score', 0)),
-                'high_risk': float(pr.get('risk_score', 0)) >= 7.0,
+                'risk_score': risk_score,
+                'high_risk': risk_score >= 7.0,
                 'risk_reasons': risk_reasons,
                 'top_risky_files': top_risky_files
             }
@@ -436,7 +484,7 @@ class WhatShippedDataProcessor:
                 else:
                     logger.info(f"[INFO] No existing data for {repo_name}, will process all PRs")
             
-            # Get PR data from Milvus
+            # Get PR data from JSON
             logger.info(f"[INFO] Fetching PR data for {repo_name}...")
             pr_data = self.get_pr_data_for_repo(repo_name)
             
@@ -444,22 +492,12 @@ class WhatShippedDataProcessor:
                 logger.warning(f"[WARNING] No PR data found for {repo_name}")
                 return
             
-            # Get PR IDs for file data lookup
-            pr_ids = [pr.get('pr_id') for pr in pr_data if pr.get('pr_id')]
-            
-            # Get file data if available
-            logger.info(f"[INFO] Fetching file data for {repo_name}...")
-            files_by_pr = self.get_file_data_for_prs(repo_name, pr_ids)
-            
-            # Process each PR
+            # Process each PR (no file data from JSON, so we'll skip file processing)
             logger.info(f"[INFO] Processing {len(pr_data)} PRs for {repo_name}...")
             processed_records = []
             
             for pr in pr_data:
-                pr_id = pr.get('pr_id')
-                files = files_by_pr.get(pr_id, [])
-                
-                record = self.process_pr_for_repo_prs(pr, files)
+                record = self.process_pr_for_repo_prs(pr, [])  # Empty files list since we don't have file data
                 if record:
                     processed_records.append(record)
             
@@ -526,7 +564,7 @@ class WhatShippedDataProcessor:
 
 def main():
     """Main function"""
-    parser = argparse.ArgumentParser(description='Process What Shipped data from Milvus to Supabase')
+    parser = argparse.ArgumentParser(description='Process What Shipped data from JSON to Supabase')
     parser.add_argument('--repo', type=str, help='Specific repository to process')
     parser.add_argument('--force-refresh', action='store_true', 
                        help='Force refresh even if data already exists (clears existing data)')
