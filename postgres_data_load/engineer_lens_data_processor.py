@@ -7,7 +7,12 @@ for the Engineer Lens UI dashboard. It calculates metrics like throughput, revie
 contribution heatmaps, and feature analysis for each engineer.
 
 Usage:
-    python engineer_lens_data_processor.py [--repo REPO_NAME] [--window-days 30] [--force-refresh]
+    python engineer_lens_data_processor.py --json-file PATH [--repo REPO_NAME] [--window-days 30] [--force-refresh]
+    
+    --json-file PATH: Path to JSON file with PR data (required)
+    --repo REPO_NAME: Process specific repository only
+    --window-days DAYS: Metrics window size in days (7, 14, 30, 90, default: 30)
+    --force-refresh: Clear existing data and reprocess all
 """
 
 import os
@@ -36,10 +41,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class EngineerLensDataProcessor:
-    def __init__(self):
+    def __init__(self, json_file_path: str):
         """Initialize connections to Supabase"""
         self.supabase_client = None
         self.pg_conn = None
+        
+        # JSON file path - must be provided
+        if not json_file_path:
+            raise ValueError("json_file_path is required")
+        
+        self.json_file_path = json_file_path
         
         # Initialize connections
         self._init_supabase()
@@ -78,12 +89,11 @@ class EngineerLensDataProcessor:
         """Get list of all repositories in the JSON file"""
         try:
             # Read from JSON file
-            json_file_path = os.path.join(os.path.dirname(__file__), "pr_data_20250811_235048.json")
-            if not os.path.exists(json_file_path):
-                logger.error(f"[ERROR] JSON file not found: {json_file_path}")
+            if not os.path.exists(self.json_file_path):
+                logger.error(f"[ERROR] JSON file not found: {self.json_file_path}")
                 return []
             
-            with open(json_file_path, 'r', encoding='utf-8') as f:
+            with open(self.json_file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
             # Extract PR data from the JSON structure
@@ -109,14 +119,13 @@ class EngineerLensDataProcessor:
             end_timestamp = int(end_date.timestamp())
             
             # Read from JSON file
-            json_file_path = os.path.join(os.path.dirname(__file__), "pr_data_20250811_235048.json")
-            if not os.path.exists(json_file_path):
-                logger.error(f"[ERROR] JSON file not found: {json_file_path}")
+            if not os.path.exists(self.json_file_path):
+                logger.error(f"[ERROR] JSON file not found: {self.json_file_path}")
                 return []
             
-            logger.info(f"[INFO] Reading PR data from {json_file_path}")
+            logger.info(f"[INFO] Reading PR data from {self.json_file_path}")
             
-            with open(json_file_path, 'r', encoding='utf-8') as f:
+            with open(self.json_file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
             # Extract PR data from the JSON structure
@@ -1344,29 +1353,36 @@ class EngineerLensDataProcessor:
             if update_table in ['authors', 'all']:
                 logger.info(f"[AUTHORS] Processing authors for {repo_name}...")
                 authors = self.process_authors(repo_name, pr_data)
+                logger.info(f"[AUTHORS] Successfully processed {len(authors)} authors for {repo_name}")
+            elif update_table == 'authors':
+                logger.info(f"[AUTHORS] Authors-only mode: skipping other table processing")
             
             # Calculate daily metrics
             if update_table in ['author_metrics_daily', 'all']:
                 logger.info(f"[CALCULATING] Calculating daily metrics for {repo_name}...")
                 daily_metrics = self.calculate_daily_metrics(repo_name, pr_data, start_date, end_date)
                 self.upsert_daily_metrics(daily_metrics)
-            else:
-                # For other table updates, we need to get existing daily metrics
+            elif update_table in ['author_metrics_window', 'author_file_ownership', 'author_prs_window']:
+                # For table updates that need daily metrics, load existing ones
                 logger.info(f"[INFO] Loading existing daily metrics for {repo_name}...")
                 daily_metrics = self.get_existing_daily_metrics(repo_name, start_date, end_date)
+            else:
+                # For authors-only updates, we don't need daily metrics
+                daily_metrics = []
             
-            # Always calculate daily metrics from raw data for window calculations
-            if update_table in ['author_metrics_window', 'all'] and update_table != 'author_metrics_daily':
+            # Only calculate daily metrics from raw data for window calculations when needed
+            if update_table in ['author_metrics_window', 'all'] and update_table != 'author_metrics_daily' and daily_metrics:
                 logger.info(f"[INFO] Calculating daily metrics from raw data for window calculations...")
                 daily_metrics = self.calculate_daily_metrics(repo_name, pr_data, start_date, end_date)
             
             # Calculate window metrics for all periods (7, 15, 30, 60, 90 days, all_time)
             if update_table in ['author_metrics_window', 'all']:
                 logger.info(f"[INFO] Calculating window metrics for all periods for {repo_name}...")
-                logger.info(f"[DEBUG] Using {len(daily_metrics)} daily metrics records for window calculation")
                 
-                # Debug: Show what authors we have in daily metrics
                 if daily_metrics:
+                    logger.info(f"[DEBUG] Using {len(daily_metrics)} daily metrics records for window calculation")
+                    
+                    # Debug: Show what authors we have in daily metrics
                     unique_authors = set(metric['username'] for metric in daily_metrics)
                     logger.info(f"[DEBUG] Authors in daily metrics: {sorted(list(unique_authors))}")
                     
@@ -1374,6 +1390,8 @@ class EngineerLensDataProcessor:
                     sample_metrics = [m for m in daily_metrics if m['prs_submitted'] > 0 or m['prs_merged'] > 0][:3]
                     if sample_metrics:
                         logger.info(f"[DEBUG] Sample daily metrics with activity: {sample_metrics}")
+                else:
+                    logger.info(f"[INFO] No daily metrics available for window calculations")
                 
                 window_metrics = self.calculate_all_window_metrics(repo_name, daily_metrics, start_date, end_date)
                 self.upsert_window_metrics(window_metrics)
@@ -1459,6 +1477,8 @@ class EngineerLensDataProcessor:
 def main():
     """Main function"""
     parser = argparse.ArgumentParser(description='Process Engineer Lens data from JSON to Supabase')
+    parser.add_argument('--json-file', type=str, required=True,
+                       help='Path to JSON file with PR data')
     parser.add_argument('--repo', type=str, help='Specific repository to process')
     parser.add_argument('--window-days', type=int, default=30, choices=[7, 14, 30, 90], 
                        help='Metrics window size in days (default: 30)')
@@ -1472,7 +1492,7 @@ def main():
     args = parser.parse_args()
     
     try:
-        processor = EngineerLensDataProcessor()
+        processor = EngineerLensDataProcessor(json_file_path=args.json_file)
         
         if args.repo:
             # Process specific repository

@@ -10,8 +10,9 @@ Designed for ETL workflows - by default, it performs incremental updates using u
 to handle new PRs being added to repositories over time.
 
 Usage:
-    python what_shipped_data_processor.py [--repo REPO_NAME] [--force-refresh] [--incremental]
+    python what_shipped_data_processor.py --json-file PATH [--repo REPO_NAME] [--force-refresh] [--incremental]
     
+    --json-file PATH: Path to JSON file with PR data (required)
     --repo REPO_NAME: Process specific repository only
     --force-refresh: Clear existing data and reprocess all PRs
     --incremental: Incremental mode (default) - upsert new/updated PRs
@@ -44,15 +45,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class WhatShippedDataProcessor:
-    def __init__(self):
+    def __init__(self, json_file_path: str):
         """Initialize connections to Supabase and load JSON data"""
         self.supabase_client = None
         self.pg_conn = None
         self.json_data = None
         
-        # JSON file path - use script directory
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        self.json_file_path = os.path.join(script_dir, 'pr_data_20250811_235048.json')
+        # JSON file path - must be provided
+        if not json_file_path:
+            raise ValueError("json_file_path is required")
+        
+        self.json_file_path = json_file_path
         
         # Initialize connections and load JSON data
         self._load_json_data()
@@ -565,6 +568,8 @@ class WhatShippedDataProcessor:
 def main():
     """Main function"""
     parser = argparse.ArgumentParser(description='Process What Shipped data from JSON to Supabase')
+    parser.add_argument('--json-file', type=str, required=True,
+                       help='Path to JSON file with PR data')
     parser.add_argument('--repo', type=str, help='Specific repository to process')
     parser.add_argument('--force-refresh', action='store_true', 
                        help='Force refresh even if data already exists (clears existing data)')
@@ -574,7 +579,7 @@ def main():
     args = parser.parse_args()
     
     try:
-        processor = WhatShippedDataProcessor()
+        processor = WhatShippedDataProcessor(json_file_path=args.json_file)
         
         # Log the processing mode
         if args.force_refresh:

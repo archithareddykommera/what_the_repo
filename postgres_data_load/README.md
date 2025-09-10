@@ -76,6 +76,25 @@ python what_shipped_data_processor.py --repo "owner/repo" --incremental
 python what_shipped_data_processor.py --force-refresh
 ```
 
+# Update only author profiles
+python engineer_lens_data_processor.py --update-table authors
+
+# Update only daily metrics
+python engineer_lens_data_processor.py --update-table author_metrics_daily
+
+# Update only window metrics
+python engineer_lens_data_processor.py --update-table author_metrics_window
+
+# Update only file ownership data
+python engineer_lens_data_processor.py --update-table author_file_ownership
+
+# Update only PR window data
+python engineer_lens_data_processor.py --update-table author_prs_window
+
+# Update all tables (default)
+python engineer_lens_data_processor.py --update-table all
+
+
 ## 🗄️ Database Schema
 
 ### Engineer Lens Tables
